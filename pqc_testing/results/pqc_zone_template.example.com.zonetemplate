@@ -1,0 +1,8 @@
+pqc_zone_template.example.com. 3600 IN SOA ns.pqc_zone_template.example.com. admin.pqc_zone_template.example.com. 1719172701 7200 3600 1209600 3600
+pqc_zone_template.example.com. IN A 192.0.2.1
+pqc_zone_template.example.com. IN AAAA 2001:db8::1 
+pqc_zone_template.example.com. IN MX 10 mail.pqc_zone_template.example.net.
+pqc_zone_template.example.com. IN TXT "This zone is an example input for SLH-DSA-MTL zone signing"
+www.pqc_zone_template.example.com. IN CNAME example.com.
+pqc_zone_template.example.com. IN NS ns1.pqc_zone_template.example.net.
+pqc_zone_template.example.com. IN NS ns2.pqc_zone_template.example.net.
