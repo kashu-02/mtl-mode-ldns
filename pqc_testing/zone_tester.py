@@ -17,14 +17,14 @@ import io
 from copy import deepcopy
 import statistics
 
-algos = ['rsa','ecdsa','falcon', 'dilithium', 'sphincs-sha','sphincs-shake','mtl-sha','mtl-shake']
-query_list = [('@','SOA'),('@','NS'),('@','DNSKEY'),('www','CNAME'),('noname','NS')]
-resolver_ip = "127.0.0.1"
-resolver_port = 5553
+algos = ['rsa','ecdsa','fl-dsa', 'ml-dsa', 'slh-dsa-sha','slh-dsa-shake','slh-dsa-mtl-sha','slh-dsa-mtl-shake']
+query_list = [('@','SOA'),('@','NS'),('@','DNSKEY'),('www','CNAME')]
+resolver_ip = "54.237.115.110"
+resolver_port = 53
 protocol = ['UDP','TCP']
 
-rdtypes = {6: 'SOA', 46: 'RRSIG', 2: 'NS', 1: 'A', 48: 'DNSKEY', 43: 'DS', 28: 'AAAA', 50: 'NSEC3', 47: 'NSEC', 51: 'NSEC3PARAMS'}
-empty_set = {'SOA':0,'RRSIG':0,'NS':0,'A':0,'DNSKEY':0,'DS':0,'AAAA':0,'NSEC3':0,'NSEC':0,'NSEC3PARAMS':0}
+rdtypes = {6: 'SOA', 46: 'RRSIG', 2: 'NS', 1: 'A', 48: 'DNSKEY', 43: 'DS', 28: 'AAAA', 50: 'NSEC3', 47: 'NSEC', 51: 'NSEC3PARAMS', 5: 'CNAME'}
+empty_set = {'SOA':0,'RRSIG':0,'NS':0,'A':0,'DNSKEY':0,'DS':0,'AAAA':0,'NSEC3':0,'NSEC':0,'NSEC3PARAMS':0, 'CNAME':0}
 
 print_response = False
 query_average_num = 10
@@ -94,12 +94,11 @@ def get_query_metrics(zone_name, proto, algo, label, qtype, display_results, dis
 
     for full_sig in opt_set:
         qname = get_name(label, algo, zone_name)
-        query = dns.message.make_query(qname,qtype,want_dnssec=True)
-
+        opt = None
         # If this is a MTL full sig, add the EDNS option
         if full_sig:
-            opt = dns.edns.GenericOption(65050, b'')
-            query.options.append(opt)
+            opt = [dns.edns.GenericOption(65050, b'')]
+        query = dns.message.make_query(qname,qtype,want_dnssec=True, options=opt)
 
         start = 0
         end = 0
