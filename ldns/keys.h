@@ -32,6 +32,12 @@
 #include <mtllib/mtl.h>
 #endif
 
+//"custom" algorithms piggyback off of some existing liboqs-specific functions
+//thus make this #define so the necessary liboqs-specific functions still compile
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+#define NEED_OQS_PIGGYBACK
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -61,6 +67,8 @@ enum ldns_enum_algorithm
         LDNS_ECDSAP384SHA384    = 14,  /* RFC 6605 */
         LDNS_ED25519            = 15,  /* RFC 8080 */
         LDNS_ED448              = 16,  /* RFC 8080 */
+//if optional algorithm enabled in configure.ac/.configure/config.h
+//  set their enum to the algorithm number set
 #ifdef PQC_ALGO_FL_DSA
         LDNS_FL_DSA_512 = PQC_ALGO_FL_DSA,
 #endif
@@ -78,7 +86,22 @@ enum ldns_enum_algorithm
 #endif
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
         LDNS_SLH_DSA_MTL_SHAKE_128s = PQC_ALGO_SLH_DSA_MTL_SHAKE,
-#endif	
+#endif
+#ifdef PQC_ALGO_MAYO_1
+        LDNS_MAYO_1 = PQC_ALGO_MAYO_1,
+#endif
+#ifdef PQC_ALGO_MAYO_2
+        LDNS_MAYO_2 = PQC_ALGO_MAYO_2,
+#endif
+#ifdef PQC_ALGO_SNOVA
+        LDNS_SNOVA_24_5_4 = PQC_ALGO_SNOVA,
+#endif
+#ifdef PQC_ALGO_SQISIGN
+        LDNS_SQISIGN_LVL1 = PQC_ALGO_SQISIGN,
+#endif
+#ifdef PQC_ALGO_HAWK
+        LDNS_HAWK_512 = PQC_ALGO_HAWK,
+#endif
         LDNS_INDIRECT           = 252,
         LDNS_PRIVATEDNS         = 253,
         LDNS_PRIVATEOID         = 254
@@ -145,10 +168,26 @@ enum ldns_enum_signing_algorithm
 #endif
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
     LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s = LDNS_SLH_DSA_MTL_SHAKE_128s,
-#endif   	
+#endif
+#ifdef PQC_ALGO_MAYO_1
+    LDNS_SIGN_MAYO_1 = LDNS_MAYO_1,
+#endif
+#ifdef PQC_ALGO_MAYO_2
+    LDNS_SIGN_MAYO_2 = LDNS_MAYO_2,
+#endif
+#ifdef PQC_ALGO_SNOVA
+    LDNS_SIGN_SNOVA_24_5_4 = LDNS_SNOVA_24_5_4,
+#endif
+#ifdef PQC_ALGO_SQISIGN
+    LDNS_SIGN_SQISIGN_LVL1 = LDNS_SQISIGN_LVL1,
+#endif
+#ifdef PQC_ALGO_HAWK
+    LDNS_SIGN_HAWK_512 = LDNS_HAWK_512,
+#endif
 };
 typedef enum ldns_enum_signing_algorithm ldns_signing_algorithm;
 
+//set the algorithm strings and OID
 #ifdef PQC_ALGO_FL_DSA
     #define LDNS_SIGN_FL_DSA_512_SCHEME "Falcon-512"
 #endif
@@ -168,6 +207,21 @@ typedef enum ldns_enum_signing_algorithm ldns_signing_algorithm;
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE 
     #define PQC_ALGO_SLH_DSA_MTL_SHAKE_OID    {0x2B,0xCE,0x0F,0x06,0x0D,0x10}
     #define PQC_ALGO_SLH_DSA_MTL_SHAKE_SCHEME "SPHINCS+-SHAKE-128s-simple"
+#endif
+#ifdef PQC_ALGO_MAYO_1
+    #define PQC_ALGO_MAYO_1_SCHEME "MAYO-1"
+#endif
+#ifdef PQC_ALGO_MAYO_2
+    #define PQC_ALGO_MAYO_2_SCHEME "MAYO-2"
+#endif
+#ifdef PQC_ALGO_SNOVA
+    #define PQC_ALGO_SNOVA_SCHEME "SNOVA_24_5_4"
+#endif
+#ifdef PQC_ALGO_SQISIGN
+    #define PQC_ALGO_SQISIGN_SCHEME "SQIsign_lvl1"
+#endif
+#ifdef PQC_ALGO_HAWK
+    #define PQC_ALGO_HAWK_SCHEME "Hawk-512"
 #endif
 
 /**
@@ -242,7 +296,7 @@ struct mtl_key_param_set
 typedef struct mtl_key_param_set mtl_key;
 #endif
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(NEED_OQS_PIGGYBACK) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
 struct oqs_key_param_set
 {
     uint8_t* sk;
@@ -252,6 +306,12 @@ struct oqs_key_param_set
     char* alg_id;
 };
 typedef struct oqs_key_param_set oqs_key;
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+typedef struct oqs_key_param_set custom_key;
+//works EXACTLY like oqs_key but more generic name "custom_key"
+//meant to be used with external/custom libraries (ie non-MTL, non-liboqs, non-openssl)
 #endif
 
 /**

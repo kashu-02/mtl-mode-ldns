@@ -28,10 +28,39 @@
 #endif
 #endif /* HAVE_SSL */
 
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+#define NEED_OQS_PIGGYBACK
+#endif
+
+#if defined(NEED_OQS_PIGGYBACK) || defined(PQC_ALGO_FL_DSA) || defined(PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined(PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
+#include <oqs/sig.h>
+#endif
+
 #if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
 #include <mtllib/mtl.h>
 #include <mtllib/mtl_spx.h>
-#include <oqs/sig.h>
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined (PQC_ALGO_HAWK)
+#include <nistrng/rng.h>
+#endif
+
+#ifdef PQC_ALGO_SQISIGN
+#define SQISIGN_VARIANT lvl1
+#define SQISIGN_BUILD_TYPE_BROADWELL
+#include <sqisign/sig.h>
+#include <sqisign/sqisign_namespace.h>
+#include <sqisign/lvl1.h>
+#endif
+
+#ifdef PQC_ALGO_HAWK
+#define HAWK_LOGN 9
+#include <hawk/hawk.h>
+//randombytes wrapper to make it work with hawk's keygen function
+static void hawk_randombytes(void* ctx, void* dst, size_t len) {
+    (void) ctx;	//unused variable compiler warning suppression
+    randombytes(dst, len);
+}
 #endif
 
 ldns_lookup_table ldns_signing_algorithms[] = {
@@ -66,22 +95,37 @@ ldns_lookup_table ldns_signing_algorithms[] = {
         { LDNS_SIGN_HMACSHA384, "hmac-sha384" },
         { LDNS_SIGN_HMACSHA512, "hmac-sha512" },
 #ifdef PQC_ALGO_FL_DSA
-        { LDNS_FL_DSA_512, "FL_DSA_512"},
+        { LDNS_SIGN_FL_DSA_512, "FL_DSA_512"},
 #endif
 #ifdef PQC_ALGO_ML_DSA
-        { LDNS_ML_DSA_44, "ML_DSA_44"},
+        { LDNS_SIGN_ML_DSA_44, "ML_DSA_44"},
 #endif
 #ifdef PQC_ALGO_SLH_DSA_SHA2 
-        { LDNS_SLH_DSA_SHA2_128s, "SLH_DSA_SHA2_128s"},
+        { LDNS_SIGN_SLH_DSA_SHA2_128s, "SLH_DSA_SHA2_128s"},
 #endif
 #ifdef PQC_ALGO_SLH_DSA_SHAKE
-        { LDNS_SLH_DSA_SHAKE_128s, "SLH_DSA_SHAKE_128s"},
+        { LDNS_SIGN_SLH_DSA_SHAKE_128s, "SLH_DSA_SHAKE_128s"},
 #endif        		
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHA2 
-        { LDNS_SLH_DSA_MTL_SHA2_128s, "SLH_DSA_MTL_SHA2_128s"},
+        { LDNS_SIGN_SLH_DSA_MTL_SHA2_128s, "SLH_DSA_MTL_SHA2_128s"},
 #endif
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
-        { LDNS_SLH_DSA_MTL_SHAKE_128s, "SLH_DSA_MTL_SHAKE_128s"},
+        { LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s, "SLH_DSA_MTL_SHAKE_128s"},
+#endif
+#ifdef PQC_ALGO_MAYO_1
+		{ LDNS_SIGN_MAYO_1, "MAYO-1"},
+#endif
+#ifdef PQC_ALGO_MAYO_2
+		{ LDNS_SIGN_MAYO_2, "MAYO-2"},
+#endif
+#ifdef PQC_ALGO_SNOVA
+		{ LDNS_SIGN_SNOVA_24_5_4, "SNOVA_24_5_4"},
+#endif
+#ifdef PQC_ALGO_SQISIGN
+		{ LDNS_SIGN_SQISIGN_LVL1, "SQIsign_lvl1"},
+#endif
+#ifdef PQC_ALGO_HAWK
+		{ LDNS_SIGN_HAWK_512, "Hawk-512"},
 #endif
         { 0, NULL }
 };
@@ -437,7 +481,8 @@ ldns_key_new_frm_fp_ed448_l(FILE* fp, int* line_nr)
 }
 #endif
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(NEED_OQS_PIGGYBACK) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
+//load a liboqs (private) key from a file pointer
 static oqs_key*
 ldns_key_new_frm_fp_oqs_l(FILE* fp, char* algorithm) {
     char key_str[LDNS_MAX_PACKETLEN];      
@@ -484,7 +529,6 @@ ldns_key_new_frm_fp_oqs_l(FILE* fp, char* algorithm) {
     priv_key->alg_id = calloc(1, algo_len);
     strcpy(priv_key->alg_id, algorithm);
 
-
     return priv_key;
 }
 #endif
@@ -501,8 +545,12 @@ ldns_key_new_frm_fp_mtl_l(FILE* fp, ldns_algorithm alg) {
     uint32_t page_count = 0;
     uint32_t index;
     SPX_PARAMS *params = NULL;
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
     uint8_t oid_mtl_sha2[6] = PQC_ALGO_SLH_DSA_MTL_SHA2_OID;
-    uint8_t oid_mtl_shake[6] = PQC_ALGO_SLH_DSA_MTL_SHAKE_OID;	    
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+    uint8_t oid_mtl_shake[6] = PQC_ALGO_SLH_DSA_MTL_SHAKE_OID;
+	#endif
 
     if (ldns_fget_keyword_data_l(fp, "Key", ": ", key_str, "\n",
         sizeof(key_str), NULL) == -1)
@@ -579,6 +627,7 @@ ldns_key_new_frm_fp_mtl_l(FILE* fp, ldns_algorithm alg) {
 	params->robust = ldns_buffer_read_u8(key_buffer);
 
     switch(alg) {
+		#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
         case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
             mtl_set_scheme_functions(priv_key->mtl_ctx, params, 0,
                             spx_mtl_node_set_hash_message_sha2,
@@ -588,6 +637,8 @@ ldns_key_new_frm_fp_mtl_l(FILE* fp, ldns_algorithm alg) {
 			priv_key->oid_len = 6;
 			memcpy(priv_key->oid, oid_mtl_sha2, 6); 
             break;
+		#endif
+		#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
         case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
             mtl_set_scheme_functions(priv_key->mtl_ctx, params, 0,
                         spx_mtl_node_set_hash_message_shake,
@@ -597,6 +648,7 @@ ldns_key_new_frm_fp_mtl_l(FILE* fp, ldns_algorithm alg) {
 			priv_key->oid_len = 6;
 			memcpy(priv_key->oid, oid_mtl_shake, 6); 						
             break;
+		#endif
         default:
             printf("ERROR: Unknown algorithm %d\n", alg);
 			free(params);
@@ -669,6 +721,14 @@ ldns_key_new_frm_fp_mtl_l(FILE* fp, ldns_algorithm alg) {
 }
 #endif
 
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+static custom_key*
+ldns_key_new_frm_fp_custom_l(FILE* fp, char* algorithm) {
+	return (custom_key*) ldns_key_new_frm_fp_oqs_l(fp, algorithm);
+}
+#endif
+
+//giant wrapper function to create a new key from a (structured) file
 ldns_status
 ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
 {
@@ -676,7 +736,7 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
 	char *d;
 	ldns_signing_algorithm alg;
 	ldns_rr *key_rr;
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
+#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined (PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined (PQC_ALGO_SLH_DSA_SHA2) || defined (PQC_ALGO_SLH_DSA_SHAKE) || defined (PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined (PQC_ALGO_SNOVA) || defined (PQC_ALGO_SQISIGN) || defined (PQC_ALGO_HAWK)
     char alg_id[5];	
 #endif
 #ifdef HAVE_SSL
@@ -896,7 +956,37 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
     if (strncmp(d, alg_id, strlen(alg_id)) == 0) {    
         alg = LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s;
     }        
-#endif	
+#endif
+#ifdef PQC_ALGO_MAYO_1
+	snprintf(&alg_id[0], 5, "%d ", LDNS_SIGN_MAYO_1);
+	if (strncmp(d, alg_id, strlen(alg_id)) == 0) {
+		alg = LDNS_SIGN_MAYO_1;
+	}
+#endif
+#ifdef PQC_ALGO_MAYO_2
+	snprintf(&alg_id[0], 5, "%d ", LDNS_SIGN_MAYO_2);
+	if (strncmp(d, alg_id, strlen(alg_id)) == 0) {
+		alg = LDNS_SIGN_MAYO_2;
+	}
+#endif
+#ifdef PQC_ALGO_SNOVA
+	snprintf(&alg_id[0], 5, "%d ", LDNS_SIGN_SNOVA_24_5_4);
+	if (strncmp(d, alg_id, strlen(alg_id)) == 0) {
+		alg = LDNS_SIGN_SNOVA_24_5_4;
+	}
+#endif
+#ifdef PQC_ALGO_SQISIGN
+	snprintf(&alg_id[0], 5, "%d ", LDNS_SIGN_SQISIGN_LVL1);
+	if (strncmp(d, alg_id, strlen(alg_id)) == 0) {
+		alg = LDNS_SIGN_SQISIGN_LVL1;
+	}
+#endif
+#ifdef PQC_ALGO_HAWK
+	snprintf(&alg_id[0], 5, "%d ", LDNS_SIGN_HAWK_512);
+	if (strncmp(d, alg_id, strlen(alg_id)) == 0) {
+		alg = LDNS_SIGN_HAWK_512;
+	}
+#endif
 	LDNS_FREE(d);
 
 	switch(alg) {
@@ -1009,28 +1099,28 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
         case LDNS_SIGN_FL_DSA_512:
             ldns_key_set_algorithm(k, alg);
             ldns_key_set_external_key(k,
-                    ldns_key_new_frm_fp_oqs_l(fp, (char*)LDNS_SIGN_FL_DSA_512_SCHEME));
+                    ldns_key_new_frm_fp_oqs_l(fp, (char*) LDNS_SIGN_FL_DSA_512_SCHEME));
             break;
 #endif
 #ifdef PQC_ALGO_ML_DSA
         case LDNS_SIGN_ML_DSA_44:
             ldns_key_set_algorithm(k, alg);
             ldns_key_set_external_key(k,
-                    ldns_key_new_frm_fp_oqs_l(fp, (char*)LDNS_SIGN_ML_DSA_44_SCHEME));
+                    ldns_key_new_frm_fp_oqs_l(fp, (char*) LDNS_SIGN_ML_DSA_44_SCHEME));
             break;
 #endif
 #ifdef PQC_ALGO_SLH_DSA_SHA2 
         case LDNS_SIGN_SLH_DSA_SHA2_128s:
             ldns_key_set_algorithm(k, alg);
             ldns_key_set_external_key(k,
-                    ldns_key_new_frm_fp_oqs_l(fp, (char*)PQC_ALGO_SLH_DSA_SHA2_SCHEME));
+                    ldns_key_new_frm_fp_oqs_l(fp, (char*) PQC_ALGO_SLH_DSA_SHA2_SCHEME));
             break;
 #endif
 #ifdef PQC_ALGO_SLH_DSA_SHAKE
         case LDNS_SIGN_SLH_DSA_SHAKE_128s:
             ldns_key_set_algorithm(k, alg);
             ldns_key_set_external_key(k,
-                    ldns_key_new_frm_fp_oqs_l(fp, (char*)PQC_ALGO_SLH_DSA_SHAKE_SCHEME));
+                    ldns_key_new_frm_fp_oqs_l(fp, (char*) PQC_ALGO_SLH_DSA_SHAKE_SCHEME));
             break;
 #endif        
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHA2 
@@ -1046,6 +1136,41 @@ ldns_key_new_frm_fp_l(ldns_key **key, FILE *fp, int *line_nr)
             ldns_key_set_external_key(k,
                     ldns_key_new_frm_fp_mtl_l(fp, (ldns_algorithm)alg));
             break;
+#endif
+#ifdef PQC_ALGO_MAYO_1
+		case LDNS_SIGN_MAYO_1:
+			ldns_key_set_algorithm(k, alg);
+			ldns_key_set_external_key(k,
+					ldns_key_new_frm_fp_oqs_l(fp, (char*) PQC_ALGO_MAYO_1_SCHEME));
+		break;
+#endif
+#ifdef PQC_ALGO_MAYO_2
+		case LDNS_SIGN_MAYO_2:
+			ldns_key_set_algorithm(k, alg);
+			ldns_key_set_external_key(k,
+					ldns_key_new_frm_fp_oqs_l(fp, (char*) PQC_ALGO_MAYO_2_SCHEME));
+		break;
+#endif
+#ifdef PQC_ALGO_SNOVA
+		case LDNS_SIGN_SNOVA_24_5_4:
+			ldns_key_set_algorithm(k, alg);
+			ldns_key_set_external_key(k,
+					ldns_key_new_frm_fp_oqs_l(fp, (char*) PQC_ALGO_SNOVA_SCHEME));
+		break;	
+#endif
+#ifdef PQC_ALGO_SQISIGN
+		case LDNS_SIGN_SQISIGN_LVL1:
+			ldns_key_set_algorithm(k, alg);
+			ldns_key_set_external_key(k,
+					ldns_key_new_frm_fp_custom_l(fp, (char*) PQC_ALGO_SQISIGN_SCHEME));
+		break;
+#endif
+#ifdef PQC_ALGO_HAWK
+		case LDNS_SIGN_HAWK_512:
+			ldns_key_set_algorithm(k, alg);
+			ldns_key_set_external_key(k,
+					ldns_key_new_frm_fp_custom_l(fp, (char*) PQC_ALGO_HAWK_SCHEME));
+		break;
 #endif
 		default:
 			ldns_key_free(k);
@@ -1417,7 +1542,8 @@ ldns_gen_gost_key(void)
 #endif
 
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
+//generate a liboqs keypair given an algorithm string
 static oqs_key* 
 ldns_key_new_oqs_frm_algorithm(char* algorithm) {
     OQS_SIG* sig = NULL;
@@ -1475,6 +1601,125 @@ ldns_key_new_oqs_frm_algorithm(char* algorithm) {
 }
 #endif
 
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+static custom_key*
+ldns_key_new_custom_frm_algorithm(char* algorithm) {
+	#ifdef PQC_ALGO_SQISIGN
+	if (strncmp(algorithm, PQC_ALGO_SQISIGN_SCHEME, strlen(PQC_ALGO_SQISIGN_SCHEME)) == 0) {
+		//allocate memory for the key and fill the info fields
+		custom_key* key_pair = NULL;
+		key_pair = calloc(sizeof(custom_key), 1);
+		if (key_pair != NULL) {
+			key_pair->pk_len = SQISIGN_PUBLICKEYBYTES;
+			key_pair->pk = calloc(SQISIGN_PUBLICKEYBYTES, 1);
+			key_pair->sk_len = SQISIGN_SECRETKEYBYTES;
+			key_pair->sk = calloc(SQISIGN_SECRETKEYBYTES, 1);
+			key_pair->alg_id = calloc(strlen(PQC_ALGO_SQISIGN_SCHEME), 1);
+		}
+		if ((key_pair == NULL) || (key_pair->pk == NULL) || (key_pair->sk == NULL) || (key_pair->alg_id == NULL)) {
+			fprintf(stderr, "ERROR Unable to allocate memory\n");
+			if ((key_pair != NULL) && (key_pair->pk != NULL)) {
+				free(key_pair->pk);
+			}
+			if ((key_pair != NULL) && (key_pair->sk != NULL)) {
+				free(key_pair->sk);
+			}
+			if ((key_pair != NULL) && (key_pair->alg_id != NULL)) {
+				free(key_pair->alg_id);
+			}
+			if (key_pair != NULL) {
+				free(key_pair);
+			}
+			return NULL;
+		}
+		strncpy(key_pair->alg_id, PQC_ALGO_SQISIGN_SCHEME, strlen(PQC_ALGO_SQISIGN_SCHEME) + 1);
+
+		//"""properly""" seeding to not get the same keys everytime
+		unsigned char seed[48];
+		randombytes_select(seed, sizeof(seed));
+		randombytes_init(seed, NULL);
+
+		//generate the pk and sk using sqisign's function
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+		int ret_code = sqisign_keypair(key_pair->pk, key_pair->sk);
+		#pragma GCC diagnostic pop
+		if (ret_code != 0) {
+			fprintf(stderr, "ERROR Unable to generate keys\n");
+			free(key_pair->pk);
+			free(key_pair->sk);
+			free(key_pair->alg_id);
+			return NULL;
+		}
+
+		//key_pair generation done, return
+		return key_pair;
+	}
+	else
+	#endif
+	#ifdef PQC_ALGO_HAWK
+	if (strncmp(algorithm, PQC_ALGO_HAWK_SCHEME, strlen(PQC_ALGO_HAWK_SCHEME)) == 0) {
+		//allocate memory for the keys and fill in the info fields
+		custom_key* key_pair = NULL;
+		key_pair = calloc(sizeof(custom_key), 1);
+		if (key_pair != NULL) {
+			key_pair->pk_len = HAWK_PUBKEY_SIZE(HAWK_LOGN);
+			key_pair->pk = calloc(key_pair->pk_len, 1);
+			key_pair->sk_len = HAWK_PRIVKEY_SIZE(HAWK_LOGN);
+			key_pair->sk = calloc(key_pair->sk_len, 1);
+			key_pair->alg_id = calloc(strlen(PQC_ALGO_HAWK_SCHEME), 1);
+		}
+		if ((key_pair == NULL) || (key_pair->pk == NULL) || (key_pair->sk == NULL) || (key_pair->alg_id == NULL)) {
+			fprintf(stderr, "ERROR Unable to allocate memory\n");
+			if ((key_pair != NULL) && (key_pair->pk != NULL)) {
+				free(key_pair->pk);
+			}
+			if ((key_pair != NULL) && (key_pair->sk != NULL)) {
+				free(key_pair->sk);
+			}
+			if ((key_pair != NULL) && (key_pair->alg_id != NULL)) {
+				free(key_pair->alg_id);
+			}
+			if (key_pair != NULL) {
+				free(key_pair);
+			}
+			return NULL;
+		}
+		strncpy(key_pair->alg_id, PQC_ALGO_HAWK_SCHEME, strlen(PQC_ALGO_HAWK_SCHEME) + 1);
+
+		//"""properly""" seeding to not get the same keys everytime
+		unsigned char seed[48];
+		randombytes_select(seed, sizeof(seed));
+		randombytes_init(seed, NULL);
+
+		//make the keys
+		uint8_t tmp_buf[HAWK_TMPSIZE_KEYGEN(HAWK_LOGN)];	//if switch to ptr to heap (aka calloc), MUST change below sizeof call
+		int ret_code = hawk_keygen(	HAWK_LOGN, key_pair->sk, key_pair->pk,
+									&hawk_randombytes, 0,
+									tmp_buf, sizeof(tmp_buf));
+		if (ret_code != 1) {									//ret_code see hawk.h
+			fprintf(stderr, "ERROR Unable to generate keys\n");	//	yes, they return 0 on FAILURE
+			free(key_pair->pk);									//	and 1 on SUCCESS
+			free(key_pair->sk);									//	words cannot describe my hatred rn
+			free(key_pair->alg_id);
+			return NULL;
+		}
+
+		//keypair generation done, return
+		return key_pair;
+	}
+	else
+	#endif
+	{
+	fprintf(stderr, "ERROR Unrecognized algorithm string\n");
+	return NULL;
+	}
+}
+#endif
+
+//generate a key_pair (ldns_key type) from an ldns_signing_algorithm object
+//	for mtl/liboqs/custom, also generate the corresponding mtl/oqs/custom key object
+//	which is then added to the ldns_key key_pair via the external_key pointer field
 ldns_key *
 ldns_key_new_frm_algorithm(ldns_signing_algorithm alg, uint16_t size)
 {
@@ -1508,12 +1753,20 @@ ldns_key_new_frm_algorithm(ldns_signing_algorithm alg, uint16_t size)
     SPX_PARAMS *param_ptr = NULL;
     mtl_key* new_mtl_key = NULL;
     uint16_t sec_param = 0;
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
   	uint8_t oid_mtl_sha2[6] = PQC_ALGO_SLH_DSA_MTL_SHA2_OID;
-    uint8_t oid_mtl_shake[6] = PQC_ALGO_SLH_DSA_MTL_SHAKE_OID;	    	
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+    uint8_t oid_mtl_shake[6] = PQC_ALGO_SLH_DSA_MTL_SHAKE_OID;
+	#endif
 #endif
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
     oqs_key* new_oqs_key = NULL;	
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+	custom_key* new_custom_key = NULL;
 #endif
 
 	k = ldns_key_new();
@@ -1972,13 +2225,48 @@ ldns_key_new_frm_algorithm(ldns_signing_algorithm alg, uint16_t size)
             ldns_key_set_external_key(k, new_mtl_key);
             break;
 #endif
+#ifdef PQC_ALGO_MAYO_1
+		case LDNS_SIGN_MAYO_1:
+			//make a new liboqs keypair using the algorithm string
+			new_oqs_key = ldns_key_new_oqs_frm_algorithm((char*) PQC_ALGO_MAYO_1_SCHEME);
+			//then set the ldns key object appropriately
+			ldns_key_set_external_key(k, new_oqs_key);
+			break;
+#endif
+#ifdef PQC_ALGO_MAYO_2
+		case LDNS_SIGN_MAYO_2:
+			//make a new liboqs keypair using the algorithm string
+			new_oqs_key = ldns_key_new_oqs_frm_algorithm((char*) PQC_ALGO_MAYO_2_SCHEME);
+			//then set the ldns key object appropriately
+			ldns_key_set_external_key(k, new_oqs_key);
+			break;
+#endif
+#ifdef PQC_ALGO_SNOVA
+		case LDNS_SIGN_SNOVA_24_5_4:
+			new_oqs_key = ldns_key_new_oqs_frm_algorithm((char*) PQC_ALGO_SNOVA_SCHEME);
+			ldns_key_set_external_key(k, new_oqs_key);
+			break;
+#endif
+#ifdef PQC_ALGO_SQISIGN
+		case LDNS_SIGN_SQISIGN_LVL1:
+			new_custom_key = ldns_key_new_custom_frm_algorithm((char*) PQC_ALGO_SQISIGN_SCHEME);
+			ldns_key_set_external_key(k, new_custom_key);
+			break;
+#endif
+#ifdef PQC_ALGO_HAWK
+		case LDNS_SIGN_HAWK_512:
+			new_custom_key = ldns_key_new_custom_frm_algorithm((char*) PQC_ALGO_HAWK_SCHEME);
+			ldns_key_set_external_key(k, new_custom_key);
+			break;
+#endif
 	}
 	ldns_key_set_algorithm(k, alg);
 	return k;
 }
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(NEED_OQS_PIGGYBACK) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
 // Free the allocated external key data for an OQS key
+// TODO: check if we should be using OQS_MEM_secure_free() here instead or not (might need to pass in the algorithm as well tho)
 static void
 ldns_key_free_from_oqs_algorithm(ldns_key *k) {
 	oqs_key* oqs_key_ptr = (oqs_key*)ldns_key_external_key(k);
@@ -1992,8 +2280,15 @@ ldns_key_free_from_oqs_algorithm(ldns_key *k) {
 		if(oqs_key_ptr->pk != NULL) {
 			free(oqs_key_ptr->pk);
 		}
-		free(oqs_key_ptr);		
+		free(oqs_key_ptr);
 	}
+}
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+static void
+ldns_key_free_from_custom_algorithm(ldns_key* k) {
+	ldns_key_free_from_oqs_algorithm(k);
 }
 #endif
 
@@ -2024,42 +2319,55 @@ ldns_key_free_from_mtl_algorithm(ldns_key *k) {
 // Function to deep free keys taking into account the algorithm
 void
 ldns_key_free_frm_algorithm(ldns_key *k) {
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+	#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
 	switch(ldns_key_algorithm(k)) {
-#if defined(PQC_ALGO_FL_DSA)
-		case LDNS_SIGN_FL_DSA_512:
-			ldns_key_free_from_oqs_algorithm(k);
-			break;
-#endif
-#if defined(PQC_ALGO_ML_DSA)
-		case LDNS_SIGN_ML_DSA_44:
-			ldns_key_free_from_oqs_algorithm(k);
-			break;
-#endif
-#if defined(PQC_ALGO_SLH_DSA_SHA2)
-		case LDNS_SIGN_SLH_DSA_SHA2_128s:
-			ldns_key_free_from_oqs_algorithm(k);
-			break;
-#endif
-#if defined(PQC_ALGO_SLH_DSA_SHAKE)
-		case LDNS_SIGN_SLH_DSA_SHAKE_128s:
-			ldns_key_free_from_oqs_algorithm(k);
-			break;
-#endif		
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2)
-        case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
-			ldns_key_free_from_mtl_algorithm(k);
-			break;
-#endif		
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHAKE)
-        case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
-			ldns_key_free_from_mtl_algorithm(k);
-			break;
-	#endif
+		#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
+			#if defined(PQC_ALGO_FL_DSA)
+			case LDNS_SIGN_FL_DSA_512:
+			#endif
+			#if defined(PQC_ALGO_ML_DSA)
+			case LDNS_SIGN_ML_DSA_44:
+			#endif
+			#if defined(PQC_ALGO_SLH_DSA_SHA2)
+			case LDNS_SIGN_SLH_DSA_SHA2_128s:
+			#endif
+			#if defined(PQC_ALGO_SLH_DSA_SHAKE)
+			case LDNS_SIGN_SLH_DSA_SHAKE_128s:
+			#endif
+			#if defined(PQC_ALGO_MAYO_1)
+			case LDNS_SIGN_MAYO_1:
+			#endif
+			#if defined(PQC_ALGO_MAYO_2)
+			case LDNS_SIGN_MAYO_2:
+			#endif
+			#if defined(PQC_ALGO_SNOVA)
+			case LDNS_SIGN_SNOVA_24_5_4:
+			#endif
+				ldns_key_free_from_oqs_algorithm(k);
+				break;
+		#endif
+		#if defined(PQC_ALGO_SQISIGN)
+			#if defined(PQC_ALGO_SQISIGN)
+			case LDNS_SIGN_SQISIGN_LVL1:
+			#endif
+				ldns_key_free_from_custom_algorithm(k);
+				break;
+		#endif
+		#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
+			#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2)
+			case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
+			#endif		
+			#if defined(PQC_ALGO_SLH_DSA_MTL_SHAKE)
+			case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
+			#endif
+				ldns_key_free_from_mtl_algorithm(k);
+				break;
+		#endif
 		default:
 			// Nothing special to do for the rest of the algorithms
+			break;
 	}
-#endif
+	#endif
 	ldns_key_deep_free(k);
 }
 
@@ -2568,8 +2876,11 @@ ldns_key2rr(const ldns_key *k)
 #if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
 	mtl_key* pub_mtl_key = NULL;	
 #endif
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
     oqs_key* pub_oqs_key = NULL;	
+#endif
+#if defined(PQC_ALGO_SQISIGN)
+	custom_key* pub_custom_key = NULL;
 #endif
 
 	if (!k) {
@@ -2785,74 +3096,29 @@ ldns_key2rr(const ldns_key *k)
 			internal_data = 1;
 			break;
 
-#ifdef PQC_ALGO_FL_DSA
+#if defined(PQC_ALGO_FL_DSA) || defined(PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
+	#ifdef PQC_ALGO_FL_DSA
         case LDNS_SIGN_FL_DSA_512:
-           ldns_rr_push_rdf(pubkey,
-                          ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
-
-            pub_oqs_key = ldns_key_external_key(k);
-            if(pub_oqs_key == NULL) {
-				ldns_rr_free(pubkey);
-				return NULL;
-            }
-            size = pub_oqs_key->pk_len;
-            bin = LDNS_XMALLOC(unsigned char, size);
-            if (!bin) {
-                ldns_rr_free(pubkey);
-                return NULL;
-            }
-            memcpy(bin, pub_oqs_key->pk, size);
-            internal_data = 1;
-
-            break;
-#endif
-#ifdef PQC_ALGO_ML_DSA
+	#endif
+	#ifdef PQC_ALGO_ML_DSA
         case LDNS_SIGN_ML_DSA_44:
-           ldns_rr_push_rdf(pubkey,
-                          ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
-
-            pub_oqs_key = ldns_key_external_key(k);
-            if(pub_oqs_key == NULL) {
-				ldns_rr_free(pubkey);
-				return NULL;
-            }
-            size = pub_oqs_key->pk_len;
-            bin = LDNS_XMALLOC(unsigned char, size);
-            if (!bin) {
-                ldns_rr_free(pubkey);
-                return NULL;
-            }
-            memcpy(bin, pub_oqs_key->pk, size);
-            internal_data = 1;
-
-            break;        
-            break;        
-#endif
-#ifdef PQC_ALGO_SLH_DSA_SHA2 
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_SHA2 
         case LDNS_SIGN_SLH_DSA_SHA2_128s:
-           ldns_rr_push_rdf(pubkey,
-                          ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
-
-            pub_oqs_key = ldns_key_external_key(k);
-            if(pub_oqs_key == NULL) {
-				ldns_rr_free(pubkey);
-				return NULL;
-            }
-            size = pub_oqs_key->pk_len;
-            bin = LDNS_XMALLOC(unsigned char, size);
-            if (!bin) {
-                ldns_rr_free(pubkey);
-                return NULL;
-            }
-            memcpy(bin, pub_oqs_key->pk, size);
-            internal_data = 1;
-
-            break;        
-            break; 
-#endif
-#ifdef PQC_ALGO_SLH_DSA_SHAKE
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_SHAKE
         case LDNS_SIGN_SLH_DSA_SHAKE_128s:
-           ldns_rr_push_rdf(pubkey,
+	#endif
+	#ifdef PQC_ALGO_MAYO_1
+		case LDNS_SIGN_MAYO_1:
+	#endif
+	#ifdef PQC_ALGO_MAYO_2
+		case LDNS_SIGN_MAYO_2:
+	#endif
+	#ifdef PQC_ALGO_SNOVA
+		case LDNS_SIGN_SNOVA_24_5_4:
+	#endif
+			ldns_rr_push_rdf(pubkey,
                           ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
 
             pub_oqs_key = ldns_key_external_key(k);
@@ -2868,35 +3134,17 @@ ldns_key2rr(const ldns_key *k)
             }
             memcpy(bin, pub_oqs_key->pk, size);
             internal_data = 1;
-
-            break;        
-            break; 
+			break;
 #endif
 
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2)
+#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
 		case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
-            ldns_rr_push_rdf(pubkey,
-                          ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
-
-            pub_mtl_key = ldns_key_external_key(k);
-            if(pub_mtl_key == NULL) {
-				ldns_rr_free(pubkey);
-				return NULL;
-            }
-            size = pub_mtl_key->pk_len;
-            bin = LDNS_XMALLOC(unsigned char, size);
-            if (!bin) {
-                ldns_rr_free(pubkey);
-                return NULL;
-            }
-            memcpy(bin, pub_mtl_key->pk, size);
-            internal_data = 1;
-			break;
-#endif
-
-#if defined (PQC_ALGO_SLH_DSA_MTL_SHAKE)
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
 		case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
-            ldns_rr_push_rdf(pubkey,
+	#endif
+			ldns_rr_push_rdf(pubkey,
                           ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
 
             pub_mtl_key = ldns_key_external_key(k);
@@ -2914,6 +3162,33 @@ ldns_key2rr(const ldns_key *k)
             internal_data = 1;
 			break;
 #endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+	#ifdef PQC_ALGO_SQISIGN
+		case LDNS_SIGN_SQISIGN_LVL1:
+	#endif
+	#ifdef PQC_ALGO_HAWK
+		case LDNS_SIGN_HAWK_512:
+	#endif
+			ldns_rr_push_rdf(pubkey,
+                          ldns_native2rdf_int8(LDNS_RDF_TYPE_ALG, ldns_key_algorithm(k)));
+
+            pub_custom_key = ldns_key_external_key(k);
+            if(pub_custom_key == NULL) {
+				ldns_rr_free(pubkey);
+				return NULL;
+            }
+            size = pub_custom_key->pk_len;
+            bin = LDNS_XMALLOC(unsigned char, size);
+            if (!bin) {
+                ldns_rr_free(pubkey);
+                return NULL;
+            }
+            memcpy(bin, pub_custom_key->pk, size);
+            internal_data = 1;
+			break;
+#endif
+
 	}
 	/* fourth the key bin material */
 	if (internal_data) {

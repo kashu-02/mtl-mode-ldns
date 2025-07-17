@@ -24,8 +24,27 @@
 #endif
 #endif /* HAVE_SSL */
 
-#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined (PQC_ALGO_SLH_DSA_MTL_SHA2) || defined (PQC_ALGO_SLH_DSA_MTL_SHAKE) || defined (PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined (PQC_ALGO_SLH_DSA_SHA2) || defined (PQC_ALGO_SLH_DSA_SHAKE) || defined (PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined (PQC_ALGO_SNOVA)
 #include <oqs/sig.h>
+#endif
+
+#ifdef PQC_ALGO_SQISIGN
+#define SQISIGN_VARIANT lvl1
+#define SQISIGN_BUILD_TYPE_BROADWELL
+#include <sqisign/sig.h>
+#include <sqisign/sqisign_namespace.h>
+#include <sqisign/lvl1.h>
+#endif
+
+#ifdef PQC_ALGO_HAWK
+#include <nistrng/rng.h>
+#define HAWK_LOGN 9
+#include <hawk/hawk.h>
+//randombytes wrapper to make it work with hawk's sign function
+static void hawk_randombytes(void* ctx, void* dst, size_t len) {
+    (void) ctx;	//unused variable compiler warning suppression
+    randombytes(dst, len);
+}
 #endif
 
 #define LDNS_SIGN_WITH_ZONEMD ( LDNS_SIGN_WITH_ZONEMD_SIMPLE_SHA384 \
@@ -213,36 +232,51 @@ ldns_sign_public_buffer(ldns_buffer *sign_buf, ldns_key *current_key)
 				   ldns_key_evp_key(current_key),
 				   EVP_md5());
 		break;
-#ifdef PQC_ALGO_FL_DSA
+#if defined(PQC_ALGO_FL_DSA) || defined(PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined (PQC_ALGO_SNOVA)
+	#ifdef PQC_ALGO_FL_DSA
     case LDNS_SIGN_FL_DSA_512:
-        b64rdf = ldns_sign_public_oqs(sign_buf, ldns_key_external_key(current_key));
-        break;
-#endif
-#ifdef PQC_ALGO_ML_DSA
+	#endif
+	#ifdef PQC_ALGO_ML_DSA
     case LDNS_SIGN_ML_DSA_44:
-        b64rdf = ldns_sign_public_oqs(sign_buf, ldns_key_external_key(current_key));
-        break;
-#endif
-#ifdef PQC_ALGO_SLH_DSA_SHA2 
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_SHA2 
     case LDNS_SIGN_SLH_DSA_SHA2_128s:
-        b64rdf = ldns_sign_public_oqs(sign_buf, ldns_key_external_key(current_key));
-        break;
-#endif
-#ifdef PQC_ALGO_SLH_DSA_SHAKE
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_SHAKE
     case LDNS_SIGN_SLH_DSA_SHAKE_128s:
-        b64rdf = ldns_sign_public_oqs(sign_buf, ldns_key_external_key(current_key));
-        break;
-#endif   
-#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2 
+	#endif
+	#ifdef PQC_ALGO_MAYO_1
+	case LDNS_SIGN_MAYO_1:
+	#endif
+	#ifdef PQC_ALGO_MAYO_2
+	case LDNS_SIGN_MAYO_2:
+	#endif
+	#ifdef PQC_ALGO_SNOVA
+	case LDNS_SIGN_SNOVA_24_5_4:
+	#endif
+		b64rdf = ldns_sign_public_oqs(sign_buf, ldns_key_external_key(current_key));
+		break;
+#endif
+#if defined(PQC_ALGO_SLH_DSA_MTL_SHA2) || defined(PQC_ALGO_SLH_DSA_MTL_SHAKE)
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2 
     case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
-        b64rdf = ldns_sign_public_mtl(sign_buf, ldns_key_external_key(current_key));
+	#endif
+	#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+    case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
+	#endif
+		b64rdf = ldns_sign_public_mtl(sign_buf, ldns_key_external_key(current_key));
         break;
 #endif
-#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
-    case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
-        b64rdf = ldns_sign_public_mtl(sign_buf, ldns_key_external_key(current_key));
-        break;
-#endif      		
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+	#ifdef PQC_ALGO_SQISIGN
+	case LDNS_SIGN_SQISIGN_LVL1:
+	#endif
+	#ifdef PQC_ALGO_HAWK
+	case LDNS_SIGN_HAWK_512:
+	#endif
+		b64rdf = ldns_sign_public_custom(sign_buf, ldns_key_external_key(current_key));
+		break;
+#endif
 	default:
 		/* do _you_ know this alg? */
 		printf("unknown algorithm, ");
@@ -493,35 +527,35 @@ ldns_sign_public_evp(ldns_buffer *to_sign,
 
 	/* initializes a signing context */
 	md_type = digest_type;
-#ifdef USE_ED25519
+	#ifdef USE_ED25519
 	if(EVP_PKEY_id(key) == NID_ED25519) {
 		/* digest must be NULL for ED25519 sign and verify */
 		md_type = NULL;
 	} else
-#endif
-#ifdef USE_ED448
+	#endif
+	#ifdef USE_ED448
 	if(EVP_PKEY_id(key) == NID_ED448) {
 		md_type = NULL;
 	} else
-#endif
+	#endif
 	if(!md_type) {
 		/* unknown message digest */
 		ldns_buffer_free(b64sig);
 		return NULL;
 	}
 
-#ifdef HAVE_EVP_MD_CTX_NEW
+	#ifdef HAVE_EVP_MD_CTX_NEW
 	ctx = EVP_MD_CTX_new();
-#else
+	#else
 	ctx = (EVP_MD_CTX*)malloc(sizeof(*ctx));
 	if(ctx) EVP_MD_CTX_init(ctx);
-#endif
+	#endif
 	if(!ctx) {
 		ldns_buffer_free(b64sig);
 		return NULL;
 	}
 
-#if defined(USE_ED25519) || defined(USE_ED448)
+	#if defined(USE_ED25519) || defined(USE_ED448)
 	if(md_type == NULL) {
 		/* for these methods we must use the one-shot DigestSign */
 		r = EVP_DigestSignInit(ctx, NULL, md_type, NULL, key);
@@ -535,10 +569,10 @@ ldns_sign_public_evp(ldns_buffer *to_sign,
 			siglen = (unsigned int)siglen_sizet;
 		}
 	} else {
-#else
+	#else
 	r = 0;
 	if(md_type != NULL) {
-#endif
+	#endif
 		r = EVP_SignInit(ctx, md_type);
 		if(r == 1) {
 			r = EVP_SignUpdate(ctx, (unsigned char*)
@@ -558,40 +592,40 @@ ldns_sign_public_evp(ldns_buffer *to_sign,
 
 	/* OpenSSL output is different, convert it */
 	r = 0;
-#ifdef USE_DSA
-#ifndef S_SPLINT_S
-	/* unfortunately, OpenSSL output is different from DNS DSA format */
-# ifdef HAVE_EVP_PKEY_GET_BASE_ID
-	if (EVP_PKEY_get_base_id(key) == EVP_PKEY_DSA) {
-# elif defined(HAVE_EVP_PKEY_BASE_ID)
-	if (EVP_PKEY_base_id(key) == EVP_PKEY_DSA) {
-# else
-	if (EVP_PKEY_type(key->type) == EVP_PKEY_DSA) {
-# endif
-		r = 1;
-		sigdata_rdf = ldns_convert_dsa_rrsig_asn12rdf(b64sig, siglen);
-	}
-#endif
-#endif
-#if defined(USE_ECDSA)
+	#ifdef USE_DSA
+		#ifndef S_SPLINT_S
+		/* unfortunately, OpenSSL output is different from DNS DSA format */
+			# ifdef HAVE_EVP_PKEY_GET_BASE_ID
+			if (EVP_PKEY_get_base_id(key) == EVP_PKEY_DSA) {
+			# elif defined(HAVE_EVP_PKEY_BASE_ID)
+			if (EVP_PKEY_base_id(key) == EVP_PKEY_DSA) {
+			# else
+			if (EVP_PKEY_type(key->type) == EVP_PKEY_DSA) {
+			# endif
+			r = 1;
+			sigdata_rdf = ldns_convert_dsa_rrsig_asn12rdf(b64sig, siglen);
+		}
+		#endif
+	#endif
+	#if defined(USE_ECDSA)
 	if(
-#  ifdef HAVE_EVP_PKEY_GET_BASE_ID
+		#ifdef HAVE_EVP_PKEY_GET_BASE_ID
 		EVP_PKEY_get_base_id(key)
-#  elif defined(HAVE_EVP_PKEY_BASE_ID)
+		#elif defined(HAVE_EVP_PKEY_BASE_ID)
 		EVP_PKEY_base_id(key)
-#  else
+		#else
 		EVP_PKEY_type(key->type)
-#  endif
+		#endif
 		== EVP_PKEY_EC) {
-#  ifdef USE_ECDSA
+		#ifdef USE_ECDSA
                 if(ldns_pkey_is_ecdsa(key)) {
 			r = 1;
 			sigdata_rdf = ldns_convert_ecdsa_rrsig_asn1len2rdf(
 				b64sig, (long)siglen, ldns_pkey_is_ecdsa(key));
 		}
-#  endif /* USE_ECDSA */
+		#endif /* USE_ECDSA */
 	}
-#endif /* PKEY_EC */
+	#endif /* PKEY_EC */
 	if(r == 0) {
 		/* ok output for other types is the same */
 		sigdata_rdf = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_B64, siglen,
@@ -669,7 +703,7 @@ ldns_sign_public_rsamd5(ldns_buffer *to_sign, RSA *key)
 }
 #endif /* HAVE_SSL */
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
 ldns_rdf *
 ldns_sign_public_oqs(ldns_buffer *to_sign, oqs_key *key) {
     OQS_SIG *sig = NULL;
@@ -716,6 +750,67 @@ ldns_sign_public_mtl(ldns_buffer *to_sign, mtl_key *key) {
     sigdata_rdf = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_B64, sizeof(mtl_id), &id);
 
     return sigdata_rdf;
+}
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+ldns_rdf*
+ldns_sign_public_custom(ldns_buffer* to_sign, custom_key* key_pair) {
+	#ifdef PQC_ALGO_SQISIGN
+	if (strncmp(key_pair->alg_id, PQC_ALGO_SQISIGN_SCHEME, strlen(PQC_ALGO_SQISIGN_SCHEME)) == 0) {
+		//make a temporary buffer and sign the message to there
+		//	message length is the ldns buffer's current position
+		//	because the buffer was created and then the RRset serialized to it
+		//	=> buffer position == rrset serialization length (ldns_sign_public())
+		uint32_t temp_sig_buf_len = SQISIGN_SIGNATUREBYTES + ldns_buffer_position(to_sign);
+		uint8_t temp_sig_buf[temp_sig_buf_len];
+		//sign message to create signature
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+		int ret_code = sqisign_sign(temp_sig_buf, &temp_sig_buf_len,
+									ldns_buffer_begin(to_sign), ldns_buffer_position(to_sign),
+									key_pair->sk);
+		#pragma GCC diagnostic pop
+		if (ret_code != 0) {
+			return NULL;
+		}
+		//convert the signature from a (local stack) bytestring to an ldns rdatafield containing the sig's b64
+		//	only convert the first SQISIGN_SIGNATUREBYTES bytes of the temp_sig_buf
+		ldns_rdf* sigdata_rdf = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_B64, SQISIGN_SIGNATUREBYTES, temp_sig_buf);
+		return sigdata_rdf;
+	}
+	else
+	#endif
+	#ifdef PQC_ALGO_HAWK
+	if (strncmp(key_pair->alg_id, PQC_ALGO_HAWK_SCHEME, strlen(PQC_ALGO_HAWK_SCHEME)) == 0) {
+		//intialize nistrng seed (hawk still uses randombytes during signing)
+		unsigned char seed[48];
+		randombytes_select(seed, sizeof(seed));
+		randombytes_init(seed, NULL);
+		//create the necessary buffers
+		uint32_t temp_sig_buf_len = HAWK_SIG_SIZE(HAWK_LOGN);
+		uint8_t temp_sig_buf[temp_sig_buf_len];	//buffer that the signature is stored into
+		uint8_t tmp_buf[HAWK_TMPSIZE_SIGN(HAWK_LOGN)];		//buffer only for speed-up purposes during HAWK signing
+		//sign message to create signature
+		shake_context sc_data;
+		hawk_sign_start(&sc_data);
+		shake_inject(&sc_data, ldns_buffer_begin(to_sign), ldns_buffer_position(to_sign));
+		int ret_code = hawk_sign_finish(HAWK_LOGN,
+										&hawk_randombytes, 0,
+										temp_sig_buf, &sc_data,
+										key_pair->sk,
+										tmp_buf, sizeof(tmp_buf));
+		if (ret_code != 1) {
+			return NULL;
+		}
+		//convert signature from local bytestring to ldns rdatafield containing sig's b64
+		ldns_rdf* sigdata_rdf = ldns_rdf_new_frm_data(LDNS_RDF_TYPE_B64, temp_sig_buf_len, temp_sig_buf);
+		return sigdata_rdf;
+	}
+	else
+	#endif
+	//key is of unknown algorithm
+	return NULL;
 }
 #endif
 
@@ -1479,8 +1574,12 @@ ldns_dnssec_zone_update_mtl_rrsigs(ldns_rr_list *new_rrs, ldns_key_list *key_lis
 
             switch(algo) {
 				// Update the MTL based algorithms
+				#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
                 case LDNS_SIGN_SLH_DSA_MTL_SHA2_128s:
-                case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:                
+				#endif
+				#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+                case LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s:
+				#endif
                     sigrdf =ldns_rr_rrsig_sig(rr_ptr);
                     ldns_rdf2wire((uint8_t**)&mtl_key_id, sigrdf, &mtl_key_id_size);
 
@@ -1489,9 +1588,16 @@ ldns_dnssec_zone_update_mtl_rrsigs(ldns_rr_list *new_rrs, ldns_key_list *key_lis
                         priv_key = ldns_key_external_key(current_key);
 
 						// Only update based on keys that are also MTL based
-                        if((priv_key != NULL) && 
-                           (ldns_key_algorithm(current_key) == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s ||
-                            ldns_key_algorithm(current_key) == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s)) {
+                        if((priv_key != NULL) &&
+                           (
+							#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
+							ldns_key_algorithm(current_key) == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s ||
+							#endif
+							#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+                            ldns_key_algorithm(current_key) == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s ||
+							#endif
+							false
+						   )) {
                             mtl_ctx = priv_key->mtl_ctx;
 
                             if(memcmp(mtl_key_id->sid.id, mtl_ctx->sid.id, mtl_key_id->sid.length) == 0) { 

@@ -688,8 +688,15 @@ verify_dnssec_zone(ldns_dnssec_zone *dnssec_zone, ldns_rdf *zone_name,
 			while(cur_rrset != NULL) {
 				ldns_dnssec_rrs* rr_sig = cur_rrset->signatures;
 				while(rr_sig != NULL) {
-					if((ldns_rdf2native_int8(ldns_rr_rrsig_algorithm(rr_sig->rr)) == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s) ||
-						(ldns_rdf2native_int8(ldns_rr_rrsig_algorithm(rr_sig->rr)) == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s)) {
+					if(
+						#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+						(ldns_rdf2native_int8(ldns_rr_rrsig_algorithm(rr_sig->rr)) == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s) ||
+						#endif
+						#ifdef PQC_ALGO_SLH_DSA_SHA2
+						(ldns_rdf2native_int8(ldns_rr_rrsig_algorithm(rr_sig->rr)) == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s) ||
+						#endif
+						false
+						) {
 							uint8_t* mtl_sig;
 							ldns_rdf *sigrdf = NULL;
 							size_t mtl_sig_size = 0;
@@ -705,8 +712,15 @@ verify_dnssec_zone(ldns_dnssec_zone *dnssec_zone, ldns_rdf *zone_name,
 									ldns_rr* key = ldns_rr_list_rr(keys, ki);	
 									if((key != NULL) && (ldns_rr_get_type(key) == LDNS_RR_TYPE_DNSKEY)) {
 										uint8_t algo = ldns_rdf2native_int8(ldns_rr_rdf(key,2));
-										if((algo == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s) ||
-										 (algo == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s)) {
+										if(	
+											#ifdef PQC_ALGO_SLH_DSA_MTL_SHA2
+											(algo == LDNS_SIGN_SLH_DSA_MTL_SHA2_128s) ||
+											#endif
+											#ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
+										 	(algo == LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s) ||
+											#endif
+											false
+										) {
 											ldns_buffer* key_buf = ldns_buffer_new(LDNS_MAX_PACKETLEN);
 											if (ldns_rdf2buffer_wire(key_buf, ldns_rr_rdf(key, 3)) == LDNS_STATUS_OK) {
 												if( ldns_verify_rrsig_mtl_ladder(mtl_sig, mtl_sig_size, ldns_buffer_begin(key_buf), ldns_buffer_position(key_buf), algo) != LDNS_STATUS_OK) {

@@ -37,7 +37,8 @@ algorithm_list = {
 
 
 app_path = "/usr/local/bin/"
-
+# app_path = ""   #let PATH handle everything
+#                 #TODO: to make it more robust, use a subprocess call to "which ldns_*" here instead
 
 def clear_working_directory(path):
     """

@@ -41,6 +41,10 @@
 #include <mtllib/mtl_spx.h>
 #endif
 
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+#define NEED_OQS_PIGGYBACK
+#endif
+
 #ifndef INET_ADDRSTRLEN
 #define INET_ADDRSTRLEN 16
 #endif
@@ -88,6 +92,21 @@ ldns_lookup_table ldns_algorithms[] = {
 #ifdef PQC_ALGO_SLH_DSA_MTL_SHAKE
         { LDNS_SLH_DSA_MTL_SHAKE_128s, "SLH_DSA_MTL_SHAKE_128s"},
 #endif   	
+#ifdef PQC_ALGO_MAYO_1
+		{ LDNS_MAYO_1, "MAYO-1"},
+#endif
+#ifdef PQC_ALGO_MAYO_2
+		{ LDNS_MAYO_2, "MAYO-2"},
+#endif
+#ifdef PQC_ALGO_SNOVA
+		{ LDNS_SNOVA_24_5_4, "SNOVA_24_5_4"},
+#endif
+#ifdef PQC_ALGO_SQISIGN
+		{ LDNS_SQISIGN_LVL1, "SQIsign_lvl1"},
+#endif
+#ifdef PQC_ALGO_HAWK
+		{ LDNS_HAWK_512, "Hawk-512"},
+#endif
         { LDNS_INDIRECT, "INDIRECT" },
         { LDNS_PRIVATEDNS, "PRIVATEDNS" },
         { LDNS_PRIVATEOID, "PRIVATEOID" },
@@ -2985,7 +3004,7 @@ ldns_mtl_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 }
 #endif
 
-#if defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE)
+#if defined(NEED_OQS_PIGGYBACK) || defined(PQC_ALGO_FL_DSA) || defined (PQC_ALGO_ML_DSA) || defined(PQC_ALGO_SLH_DSA_SHA2) || defined(PQC_ALGO_SLH_DSA_SHAKE) || defined(PQC_ALGO_MAYO_1) || defined(PQC_ALGO_MAYO_2) || defined(PQC_ALGO_SNOVA)
 static ldns_status
 ldns_oqs_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 {
@@ -3018,6 +3037,13 @@ ldns_oqs_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 	ldns_buffer_free(key_buffer);
 
     return status;
+}
+#endif
+
+#if defined(PQC_ALGO_SQISIGN) || defined(PQC_ALGO_HAWK)
+static ldns_status
+ldns_custom_key2buffer_str(ldns_buffer *output, const ldns_key* k) {
+	return ldns_oqs_key2buffer_str(output, k);
 }
 #endif
 
@@ -3425,7 +3451,42 @@ ldns_key2buffer_str(ldns_buffer *output, const ldns_key *k)
 				ldns_buffer_printf(output, "Algorithm: %d (SLH_DSA_MTL_SHAKE_128s)\n", LDNS_SIGN_SLH_DSA_MTL_SHAKE_128s);
 				status = ldns_mtl_key2buffer_str(output, k);
 				break;	
-#endif	
+#endif
+#ifdef PQC_ALGO_MAYO_1
+			case LDNS_SIGN_MAYO_1:
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (MAYO-1)\n", LDNS_SIGN_MAYO_1);
+				status = ldns_oqs_key2buffer_str(output, k);
+				break;
+#endif
+#ifdef PQC_ALGO_MAYO_2
+			case LDNS_SIGN_MAYO_2:
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (MAYO-2)\n", LDNS_SIGN_MAYO_2);
+				status = ldns_oqs_key2buffer_str(output, k);
+				break;
+#endif
+#ifdef PQC_ALGO_SNOVA
+			case LDNS_SIGN_SNOVA_24_5_4:
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (SNOVA_24_5_4)\n", LDNS_SIGN_SNOVA_24_5_4);
+				status = ldns_oqs_key2buffer_str(output, k);
+				break;
+#endif
+#ifdef PQC_ALGO_SQISIGN
+			case LDNS_SIGN_SQISIGN_LVL1:
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (SQIsign_lvl1)\n", LDNS_SIGN_SQISIGN_LVL1);
+				status = ldns_custom_key2buffer_str(output, k);
+				break;
+#endif
+#ifdef PQC_ALGO_HAWK
+			case LDNS_SIGN_HAWK_512:
+				ldns_buffer_printf(output, "Private-key-format: v1.2\n");
+				ldns_buffer_printf(output, "Algorithm: %d (Hawk-512)\n", LDNS_SIGN_HAWK_512);
+				status = ldns_custom_key2buffer_str(output, k);
+				break;
+#endif
 		}
 #endif /* HAVE_SSL */
 	} else {

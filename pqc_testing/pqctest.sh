@@ -176,15 +176,25 @@ mtl_dnssec_test_soa_incorrect SLH_DSA_MTL_SHA2_128s SLH_DSA_MTL_SHAKE_128s
 
 mtl_dnssec_keygen_sign_and_verify FL_DSA_512
 mtl_dnssec_keygen_sign_and_verify ML_DSA_44
+mtl_dnssec_keygen_sign_and_verify MAYO-1
+mtl_dnssec_keygen_sign_and_verify MAYO-2
+mtl_dnssec_keygen_sign_and_verify SNOVA_24_5_4
 mtl_dnssec_keygen_sign_and_verify SLH_DSA_SHA2_128s
 mtl_dnssec_keygen_sign_and_verify SLH_DSA_SHAKE_128s
-mtl_dnssec_keygen_sign_and_verify FL_DSA_512 ML_DSA_44 SLH_DSA_SHA2_128s SLH_DSA_SHAKE_128s
+mtl_dnssec_keygen_sign_and_verify SQIsign_lvl1
+mtl_dnssec_keygen_sign_and_verify Hawk-512
+mtl_dnssec_keygen_sign_and_verify FL_DSA_512 ML_DSA_44 MAYO-1 MAYO-2 SNOVA_24_5_4 SLH_DSA_SHA2_128s SLH_DSA_SHAKE_128s SQIsign_lvl1 Hawk-512
 
 mtl_dnssec_test_mismatch_keys FL_DSA_512
 mtl_dnssec_test_mismatch_keys ML_DSA_44
+mtl_dnssec_test_mismatch_keys MAYO-1
+mtl_dnssec_test_mismatch_keys MAYO-2
+mtl_dnssec_test_mismatch_keys SNOVA_24_5_4
 mtl_dnssec_test_mismatch_keys SLH_DSA_SHA2_128s
 mtl_dnssec_test_mismatch_keys SLH_DSA_SHAKE_128s
-mtl_dnssec_test_mismatch_keys FL_DSA_512 ML_DSA_44 SLH_DSA_SHA2_128s SLH_DSA_SHAKE_128s
+mtl_dnssec_test_mismatch_keys SQIsign_lvl1
+mtl_dnssec_test_mismatch_keys Hawk-512
+mtl_dnssec_test_mismatch_keys FL_DSA_512 ML_DSA_44 MAYO-1 MAYO-2 SNOVA_24_5_4 SLH_DSA_SHA2_128s SLH_DSA_SHAKE_128s SQIsign_lvl1 Hawk-512
 
 echo ""
 echo -e "\033[0;32mTesting is complete - All Tests Pass!\033[0m"
