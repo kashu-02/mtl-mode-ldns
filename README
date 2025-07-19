@@ -36,6 +36,71 @@ INSTALLATION
 4. make
 5. make install
 
+PQC ALGORITHMS
+The following flags can enable the PQC algorithm.  The DNSSEC security id can be configured by using =## after the flag where ## is the desired algorithm ID.
+
+Falcon:
+   Requires LibOQS library
+   ```--enable-pqc-algo-fl-dsa```
+   default DNSSEC security ID = 244
+   
+ML-DSA
+   Requires LibOQS library
+   ```--enable-pqc-algo-ml-dsa```
+   default DNSSEC security ID = 245
+   
+   
+SLH-DSA 
+   Requires LibOQS library
+   
+   SHA2 Hashing  
+   ```--enable-pqc-algo-slh-dsa-sha2```
+   default DNSSEC security ID = 246
+   
+   SHAKE Hashing
+   ```--enable-pqc-algo-slh-dsa-shake``` 
+   default DNSSEC security ID = 247
+   
+
+MTL Mode
+   Requires LibOQS library & MTL Library
+  
+   SHA2 Hashing
+   ```--enable-pqc-algo-slh-dsa-mtl-sha2```
+   default DNSSEC security ID = 248
+  
+   SHAKE Hashing
+   ```--enable-pqc-algo-slh-dsa-mtl-shake```
+   default DNSSEC security ID = 249
+  
+MAYO
+   Requires LIBOQS library
+   
+   MAYO-1
+   ```--enable-pqc-algo-mayo-1```
+   default DNSSEC security ID = 230
+   
+   MAYO-2
+   ```--enable-pqc-algo-mayo-2```
+   default DNSSEC security ID = 231
+   
+SNOVA   
+   Requires LIBOQS library
+   ```--enable-pqc-algo-snova```
+   default DNSSEC security ID = 232
+   
+SQISign
+   Requires SQISign repository as library. 
+   ```--enable-pqc-algo-sqisign```
+   default DNSSEC security ID = 233
+ 
+HAWK  
+   Requires HAWK repository as library. 
+   ```--enable-pqc-algo-hawk```
+   default DNSSEC security ID = 234
+
+
+
 
 * Building from repository
 
